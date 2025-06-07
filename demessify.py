@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from scipy.stats import zscore
 
 st.set_page_config(page_title="DeMessify", layout="wide")
 st.title("🧹 DeMessify - Turn data dirt into gold")
 
-# Initialize session state variables
+# Initialize session state
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'uploaded_file_name' not in st.session_state:
@@ -42,7 +43,7 @@ if uploaded_file:
     st.sidebar.header("🧰 Preprocessing Options")
     options = st.sidebar.multiselect(
         "Select preprocessing steps:",
-        ["Drop Columns", "Handle Missing Data"]
+        ["Drop Columns", "Handle Missing Data", "Handle Outliers", "Drop Duplicates"]
     )
 
     # 🔹 Drop Columns
@@ -79,6 +80,41 @@ if uploaded_file:
                 elif strategy == "Fill with Most Frequent":
                     st.session_state.df[selected_col].fillna(st.session_state.df[selected_col].mode()[0], inplace=True)
                 st.success(f"Applied {strategy} to {selected_col}")
+
+    # 🔹 Handle Outliers
+    if "Handle Outliers" in options:
+        st.subheader("🔹 Handle Outliers")
+        method = st.selectbox("Method:", ["Z-Score", "IQR"])
+        num_cols = st.session_state.df.select_dtypes(include=np.number).columns.tolist()
+        if num_cols:
+            selected_cols = st.multiselect("Select columns:", num_cols)
+            if selected_cols and st.button("Apply Outlier Removal"):
+                push_history()
+                original_size = len(st.session_state.df)
+                if method == "Z-Score":
+                    z_scores = st.session_state.df[selected_cols].apply(zscore)
+                    st.session_state.df = st.session_state.df[(z_scores.abs() < 3).all(axis=1)]
+                elif method == "IQR":
+                    for col in selected_cols:
+                        Q1 = st.session_state.df[col].quantile(0.25)
+                        Q3 = st.session_state.df[col].quantile(0.75)
+                        IQR = Q3 - Q1
+                        st.session_state.df = st.session_state.df[
+                            (st.session_state.df[col] >= Q1 - 1.5 * IQR) &
+                            (st.session_state.df[col] <= Q3 + 1.5 * IQR)
+                        ]
+                removed = original_size - len(st.session_state.df)
+                st.success(f"Removed {removed} outliers using {method} method")
+
+    # 🔹 Drop Duplicates
+    if "Drop Duplicates" in options:
+        st.subheader("🔹 Remove Duplicates")
+        if st.button("Remove Duplicates"):
+            push_history()
+            before = len(st.session_state.df)
+            st.session_state.df = st.session_state.df.drop_duplicates()
+            after = len(st.session_state.df)
+            st.success(f"Removed {before - after} duplicate rows")
 
     # 🔎 Processed Data Preview
     st.subheader("🧾 Processed Data Preview")
