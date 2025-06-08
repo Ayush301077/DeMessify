@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
+from sklearn.preprocessing import LabelEncoder
 
 st.set_page_config(page_title="DeMessify", layout="wide")
 st.title("🧹 DeMessify - Turn data dirt into gold")
@@ -43,7 +44,13 @@ if uploaded_file:
     st.sidebar.header("🧰 Preprocessing Options")
     options = st.sidebar.multiselect(
         "Select preprocessing steps:",
-        ["Drop Columns", "Handle Missing Data", "Handle Outliers", "Drop Duplicates"]
+        [
+            "Drop Columns",
+            "Handle Missing Data",
+            "Handle Outliers",
+            "Drop Duplicates",
+            "Encode Categorical Variables"
+        ]
     )
 
     # 🔹 Drop Columns
@@ -115,6 +122,32 @@ if uploaded_file:
             st.session_state.df = st.session_state.df.drop_duplicates()
             after = len(st.session_state.df)
             st.success(f"Removed {before - after} duplicate rows")
+
+    # 🔹 Encode Categorical Variables
+    if "Encode Categorical Variables" in options:
+        st.subheader("🔹 Encode Categorical Variables")
+        cat_cols = st.session_state.df.select_dtypes(include='object').columns.tolist()
+        if cat_cols:
+            selected_cols = st.multiselect("Select categorical columns:", cat_cols)
+            encoding_method = st.radio("Encoding Method:", ["Label Encoding", "One-Hot Encoding", "Get Dummies"])
+            if selected_cols and st.button("Apply Encoding"):
+                push_history()
+                if encoding_method == "Label Encoding":
+                    le = LabelEncoder()
+                    for col in selected_cols:
+                        st.session_state.df[col] = le.fit_transform(st.session_state.df[col].astype(str))
+                elif encoding_method == "One-Hot Encoding":
+                    df_encoded = pd.get_dummies(st.session_state.df[selected_cols], drop_first=False)
+                    st.session_state.df = pd.concat(
+                        [st.session_state.df.drop(columns=selected_cols), df_encoded], axis=1
+                    )
+                else:  # Get Dummies
+                    st.session_state.df = pd.get_dummies(
+                        st.session_state.df, columns=selected_cols, drop_first=True
+                    )
+                st.success(f"Encoding applied using {encoding_method}")
+        else:
+            st.info("No categorical columns found")
 
     # 🔎 Processed Data Preview
     st.subheader("🧾 Processed Data Preview")
