@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from scipy.stats import zscore
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
 
 st.set_page_config(page_title="DeMessify", layout="wide")
 st.title("🧹 DeMessify - Turn data dirt into gold")
@@ -49,7 +49,9 @@ if uploaded_file:
             "Handle Missing Data",
             "Handle Outliers",
             "Drop Duplicates",
-            "Encode Categorical Variables"
+            "Encode Categorical Variables",
+            "Feature Scaling/Normalization",
+            "Feature Engineering"
         ]
     )
 
@@ -57,11 +59,10 @@ if uploaded_file:
     if "Drop Columns" in options:
         st.subheader("🔹 Drop Columns")
         cols_to_drop = st.multiselect("Select columns to drop:", st.session_state.df.columns.tolist())
-        if cols_to_drop:
-            if st.button("Apply Drop Columns"):
-                push_history()
-                st.session_state.df = st.session_state.df.drop(columns=cols_to_drop)
-                st.success(f"Dropped columns: {', '.join(cols_to_drop)}")
+        if cols_to_drop and st.button("Apply Drop Columns"):
+            push_history()
+            st.session_state.df = st.session_state.df.drop(columns=cols_to_drop)
+            st.success(f"Dropped columns: {', '.join(cols_to_drop)}")
 
     # 🔹 Handle Missing Data
     if "Handle Missing Data" in options:
@@ -149,9 +150,60 @@ if uploaded_file:
         else:
             st.info("No categorical columns found")
 
-    # 🔎 Processed Data Preview
+    # 🔹 Feature Scaling / Normalization
+    if "Feature Scaling/Normalization" in options:
+        st.subheader("🔹 Feature Scaling")
+        num_cols = st.session_state.df.select_dtypes(include=np.number).columns.tolist()
+        if num_cols:
+            selected_cols = st.multiselect("Select numeric columns:", num_cols)
+            scaling_method = st.radio("Scaling Method:", ["StandardScaler", "MinMaxScaler"])
+            if selected_cols and st.button("Apply Scaling"):
+                push_history()
+                scaler = StandardScaler() if scaling_method == "StandardScaler" else MinMaxScaler()
+                st.session_state.df[selected_cols] = scaler.fit_transform(st.session_state.df[selected_cols])
+                st.success(f"{scaling_method} applied successfully")
+        else:
+            st.warning("No numeric columns for scaling")
+
+    # 🔹 Feature Engineering
+    if "Feature Engineering" in options:
+        st.subheader("🔹 Feature Engineering")
+        converted_cols = []
+        for col in st.session_state.df.columns:
+            if st.session_state.df[col].dtype == 'object':
+                try:
+                    st.session_state.df[col] = pd.to_datetime(st.session_state.df[col])
+                    converted_cols.append(col)
+                except (ValueError, TypeError):
+                    pass
+        if converted_cols:
+            st.info(f"Automatically converted to datetime: {', '.join(converted_cols)}")
+
+        date_cols = st.session_state.df.select_dtypes(include=['datetime']).columns.tolist()
+        if date_cols:
+            selected_cols = st.multiselect("Select datetime columns to extract features from:", date_cols)
+            if selected_cols and st.button("Extract Year, Month, Day"):
+                push_history()
+                for col in selected_cols:
+                    st.session_state.df[f"{col}_year"] = st.session_state.df[col].dt.year
+                    st.session_state.df[f"{col}_month"] = st.session_state.df[col].dt.month
+                    st.session_state.df[f"{col}_day"] = st.session_state.df[col].dt.day
+                st.success("Date features extracted")
+        else:
+            st.info("No datetime columns found")
+
+    # 🧾 Final Processed Data + Download
     st.subheader("🧾 Processed Data Preview")
     st.dataframe(st.session_state.df)
+
+    csv = st.session_state.df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        "📥 Download Cleaned Data",
+        csv,
+        "cleaned_data.csv",
+        "text/csv",
+        key='download-csv'
+    )
 
 else:
     st.info("Please upload a CSV file to get started.")
